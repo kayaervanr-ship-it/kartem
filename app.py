@@ -145,12 +145,12 @@ if df_fatura is not None and df_banka is not None:
             try: return float(s)
             except: return 0.0
 
-        # TUTAR HESAPLAMA MANTIĞI: (Ara Toplam * 1.00948) + Toplam Vergi
+        # TUTAR HESAPLAMA MANTIĞI: (Ara Toplam * 0.00948) + Toplam Vergi
         ara = df_fatura[f_ara_col].apply(clean_val) if f_ara_col in df_fatura.columns else 0.0
         vergi = df_fatura[f_vergi_col].apply(clean_val) if f_vergi_col in df_fatura.columns else 0.0
         
-        # Binde 9,48 Damga Vergisi Eklenmiş Ara Toplam + Toplam Vergi
-        df_fatura['Final_Tutar'] = (ara * 1.00948) + vergi
+        # Binde 9,48 Damga Vergisi + Toplam Vergi (Sadece Vergiler Toplamı)
+        df_fatura['Final_Tutar'] = (ara * 0.00948) + vergi
 
         df_banka['Final_Tutar'] = df_banka[b_tutar_col].apply(clean_val)
 
@@ -182,14 +182,14 @@ if df_fatura is not None and df_banka is not None:
                     eslesenler.append({
                         "Ödeme Yapan Kurum Adı": f_kurum,
                         "Banka Kaydı / Açıklama": b_row[b_kurum_col],
-                        "Hesaplanan Fatura Tutarı (TL)": f_tutar,
+                        "Hesaplanan Vergi Tutarı (TL)": f_tutar,
                         "Banka Tutarı (TL)": b_tutar,
                         "Eşleşme Yolu": f"Kurum Adı Benzerliği (%{match_result[1]})"
                     })
                     islenen_fatura_idx.add(f_idx)
                     islenen_banka_idx.add(b_idx)
 
-        # 2. KURAL: Tutar Birebir Eşleşmesi (Damga Vergili Tutar = Ödeme)
+        # 2. KURAL: Tutar Birebir Eşleşmesi (Damga Vergisi + KDV = Ödeme)
         for f_idx, f_row in df_fatura.iterrows():
             if f_idx in islenen_fatura_idx:
                 continue
@@ -209,9 +209,9 @@ if df_fatura is not None and df_banka is not None:
                 eslesenler.append({
                     "Ödeme Yapan Kurum Adı": f_kurum,
                     "Banka Kaydı / Açıklama": b_row[b_kurum_col],
-                    "Hesaplanan Fatura Tutarı (TL)": f_tutar,
+                    "Hesaplanan Vergi Tutarı (TL)": f_tutar,
                     "Banka Tutarı (TL)": round(b_row['Final_Tutar'], 2),
-                    "Eşleşme Yolu": "Tutar Eslesmesi (Damga Vergili Tutar)"
+                    "Eşleşme Yolu": "Tutar Eşleşmesi (Damga Vergisi + KDV)"
                 })
                 islenen_fatura_idx.add(f_idx)
                 islenen_banka_idx.add(b_idx)
