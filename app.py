@@ -58,11 +58,9 @@ with col2:
 def load_data(uploaded_file):
     if uploaded_file is not None:
         try:
-            # Dosyayı byte akışı olarak alıp kilitleri ve format çakışmalarını çözüyoruz
             file_bytes = uploaded_file.getvalue()
             df = None
 
-            # 1. Uzantı veya içerik denemeleri (xlrd ve openpyxl motorları)
             for eng in ['xlrd', 'openpyxl', None]:
                 try:
                     if eng:
@@ -74,7 +72,6 @@ def load_data(uploaded_file):
                 except Exception:
                     continue
 
-            # 2. Eğer Excel motorları okuyamadıysa CSV/Metin olarak dene
             if df is None:
                 for enc in ['utf-8', 'latin-1', 'cp1254', 'iso-8859-9']:
                     try:
@@ -99,7 +96,6 @@ df_banka = load_data(banka_file)
 if df_fatura is not None and df_banka is not None:
     st.success("Dosyalar başarıyla yüklendi!")
 
-    # Otomatik algılama fonksiyonları
     def find_kurum_col(df):
         engellenenler = ['tarih', 'date', 'zaman', 'saat', 'tutar', 'bedel', 'vergi', 'kdv', 'no', 'id', 'unnamed', 'toplam', 'matrah', 'fatura no']
         for col in df.columns:
@@ -134,7 +130,6 @@ if df_fatura is not None and df_banka is not None:
 
     f_ara_col = find_col(df_fatura, ['ara toplam', 'aratoplam', 'matrah'])
     f_vergi_col = find_col(df_fatura, ['vergi', 'kdv'])
-    f_toplam_col = find_col(df_fatura, ['toplam', 'genel toplam', 'fatura tutar', 'tutar'])
     b_tutar_col = find_col(df_banka, ['tutar', 'meblağ', 'meblag', 'ödeme', 'odeme', 'gelen'])
 
     if st.button("🚀 Mutabakatı Başlat"):
@@ -150,16 +145,12 @@ if df_fatura is not None and df_banka is not None:
             try: return float(s)
             except: return 0.0
 
-        # Tutarları Hesaplama
+        # TUTAR HESAPLAMA MANTIĞI: (Ara Toplam * 1.00948) + Toplam Vergi
         ara = df_fatura[f_ara_col].apply(clean_val) if f_ara_col in df_fatura.columns else 0.0
         vergi = df_fatura[f_vergi_col].apply(clean_val) if f_vergi_col in df_fatura.columns else 0.0
-        df_fatura['Hesaplanan_Toplam'] = ara + vergi
-
-        if f_toplam_col in df_fatura.columns and f_toplam_col != f_ara_col:
-            df_fatura['Final_Tutar'] = df_fatura[f_toplam_col].apply(clean_val)
-            df_fatura['Final_Tutar'] = df_fatura['Final_Tutar'].mask(df_fatura['Final_Tutar'] == 0, df_fatura['Hesaplanan_Toplam'])
-        else:
-            df_fatura['Final_Tutar'] = df_fatura['Hesaplanan_Toplam']
+        
+        # Binde 9,48 Damga Vergisi Eklenmiş Ara Toplam + Toplam Vergi
+        df_fatura['Final_Tutar'] = (ara * 1.00948) + vergi
 
         df_banka['Final_Tutar'] = df_banka[b_tutar_col].apply(clean_val)
 
@@ -169,7 +160,7 @@ if df_fatura is not None and df_banka is not None:
 
         banka_kurumlar = df_banka[b_kurum_col].astype(str).tolist()
 
-        # 1. KURAL: İsim Benzerliği ile Eşleştirme (%65 Eşik Oranı)
+        # 1. KURAL: İsim Benzerliği ile Eşleştirme
         for f_idx, f_row in df_fatura.iterrows():
             f_kurum = str(f_row[f_kurum_col]).strip()
             f_tutar = round(f_row['Final_Tutar'], 2)
@@ -191,14 +182,14 @@ if df_fatura is not None and df_banka is not None:
                     eslesenler.append({
                         "Ödeme Yapan Kurum Adı": f_kurum,
                         "Banka Kaydı / Açıklama": b_row[b_kurum_col],
-                        "Fatura Tutarı (TL)": f_tutar,
+                        "Hesaplanan Fatura Tutarı (TL)": f_tutar,
                         "Banka Tutarı (TL)": b_tutar,
                         "Eşleşme Yolu": f"Kurum Adı Benzerliği (%{match_result[1]})"
                     })
                     islenen_fatura_idx.add(f_idx)
                     islenen_banka_idx.add(b_idx)
 
-        # 2. KURAL: Tutar Birebir Eşleşmesi (Ara Toplam + Vergi = Ödeme)
+        # 2. KURAL: Tutar Birebir Eşleşmesi (Damga Vergili Tutar = Ödeme)
         for f_idx, f_row in df_fatura.iterrows():
             if f_idx in islenen_fatura_idx:
                 continue
@@ -218,39 +209,6 @@ if df_fatura is not None and df_banka is not None:
                 eslesenler.append({
                     "Ödeme Yapan Kurum Adı": f_kurum,
                     "Banka Kaydı / Açıklama": b_row[b_kurum_col],
-                    "Fatura Tutarı (TL)": f_tutar,
+                    "Hesaplanan Fatura Tutarı (TL)": f_tutar,
                     "Banka Tutarı (TL)": round(b_row['Final_Tutar'], 2),
-                    "Eşleşme Yolu": "Tutar Eşleşmesi (Ara Toplam + Vergi)"
-                })
-                islenen_fatura_idx.add(f_idx)
-                islenen_banka_idx.add(b_idx)
-
-        # Sekmeler
-        df_odenmeyenler = df_fatura[~df_fatura.index.isin(islenen_fatura_idx)]
-        df_eslesmeyen_banka = df_banka[~df_banka.index.isin(islenen_banka_idx)]
-
-        st.markdown("---")
-        tab1, tab2, tab3 = st.tabs(["✅ Eşleşenler (Ödeme Yapanlar)", "⚠️ Eşleşmeyen Banka Ödemeleri", "❌ Ödeme Yapmayanlar"])
-
-        with tab1:
-            st.subheader(f"Ödemesi Başarıyla Yapılan Kurumlar Listesi (Eşik: %{benzerlik_orani})")
-            if eslesenler:
-                st.dataframe(pd.DataFrame(eslesenler), use_container_width=True)
-            else:
-                st.info(f"%{benzerlik_orani} benzerlik oranına göre eşleşen kayıt bulunamadı.")
-
-        with tab2:
-            st.subheader("Banka Ödemesi Bulunan Ama Faturası Olmayanlar")
-            if not df_eslesmeyen_banka.empty:
-                st.dataframe(df_eslesmeyen_banka[[b_kurum_col, b_tutar_col]], use_container_width=True)
-            else:
-                st.info("Açıkta kalan banka ödemesi yok.")
-
-        with tab3:
-            st.subheader("Hiç Ödeme Yapılmamış Faturası Olan Kurumlar")
-            if not df_odenmeyenler.empty:
-                st.dataframe(df_odenmeyenler[[f_kurum_col, 'Final_Tutar']], use_container_width=True)
-            else:
-                st.info("Ödemesi yapılmayan fatura yok.")
-else:
-    st.info("Lütfen mutabakatı başlatmak için her iki dosyayı da yükleyin.")
+                    "Eşleşme Yolu": "Tutar Eşleşmesi (Dam
