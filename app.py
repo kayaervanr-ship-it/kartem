@@ -211,4 +211,37 @@ if df_fatura is not None and df_banka is not None:
                     "Banka Kaydı / Açıklama": b_row[b_kurum_col],
                     "Hesaplanan Fatura Tutarı (TL)": f_tutar,
                     "Banka Tutarı (TL)": round(b_row['Final_Tutar'], 2),
-                    "Eşleşme Yolu": "Tutar Eşleşmesi (Dam
+                    "Eşleşme Yolu": "Tutar Eslesmesi (Damga Vergili Tutar)"
+                })
+                islenen_fatura_idx.add(f_idx)
+                islenen_banka_idx.add(b_idx)
+
+        # Sekmeler
+        df_odenmeyenler = df_fatura[~df_fatura.index.isin(islenen_fatura_idx)]
+        df_eslesmeyen_banka = df_banka[~df_banka.index.isin(islenen_banka_idx)]
+
+        st.markdown("---")
+        tab1, tab2, tab3 = st.tabs(["✅ Eşleşenler (Ödeme Yapanlar)", "⚠️ Eşleşmeyen Banka Ödemeleri", "❌ Ödeme Yapmayanlar"])
+
+        with tab1:
+            st.subheader(f"Ödemesi Başarıyla Yapılan Kurumlar Listesi (Eşik: %{benzerlik_orani})")
+            if eslesenler:
+                st.dataframe(pd.DataFrame(eslesenler), use_container_width=True)
+            else:
+                st.info(f"%{benzerlik_orani} benzerlik oranına göre eşleşen kayıt bulunamadı.")
+
+        with tab2:
+            st.subheader("Banka Ödemesi Bulunan Ama Faturası Olmayanlar")
+            if not df_eslesmeyen_banka.empty:
+                st.dataframe(df_eslesmeyen_banka[[b_kurum_col, b_tutar_col]], use_container_width=True)
+            else:
+                st.info("Açıkta kalan banka ödemesi yok.")
+
+        with tab3:
+            st.subheader("Hiç Ödeme Yapılmamış Faturası Olan Kurumlar")
+            if not df_odenmeyenler.empty:
+                st.dataframe(df_odenmeyenler[[f_kurum_col, 'Final_Tutar']], use_container_width=True)
+            else:
+                st.info("Ödemesi yapılmayan fatura yok.")
+else:
+    st.info("Lütfen mutabakatı başlatmak için her iki dosyayı da yükleyin.")
